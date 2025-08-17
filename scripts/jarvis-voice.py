@@ -10,12 +10,8 @@ import time
 import threading
 import requests
 import random
+import os
 from datetime import datetime
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-
-app = Flask(__name__)
-CORS(app)
 
 class JarvisVoice:
     def __init__(self):
@@ -23,6 +19,10 @@ class JarvisVoice:
         self.microphone = sr.Microphone()
         self.tts_engine = None
         self.tts_available = False
+        
+        self.openai_api_key = os.getenv('OPENAI_API_KEY')
+        if not self.openai_api_key:
+            print("⚠️ OpenAI API key not found. Set OPENAI_API_KEY environment variable for intelligent responses.")
         
         try:
             import pyttsx3
@@ -44,8 +44,12 @@ class JarvisVoice:
             "JARVIS at your service. What would you like me to help you with?",
             "I'm here and ready to help. What can I do for you?",
             "Your personal AI assistant is online. How may I be of assistance?",
-            "JARVIS reporting for duty. What tasks can I handle for you today?"
+            "JARVIS reporting for duty. What tasks can I handle for you today?",
+            "Good to see you again! What exciting task do we have today?",
+            "I'm fully operational and eager to help. What's on your mind?"
         ]
+        
+        self.conversation_context = []
         
         self.responses = {
             'time': self.get_time,
@@ -76,7 +80,7 @@ class JarvisVoice:
         
         # Auto-start listening
         self.is_listening = True
-        threading.Thread(target=self.listen_for_wake_word, daemon=True).start()
+        self.start_listening()
 
     def announce_activation(self):
         """Announce JARVIS activation"""
@@ -95,13 +99,13 @@ class JarvisVoice:
         else:
             greeting = "Good night"
             
-        welcome_msg = f"{greeting}, {self.user_name}! " + random.choice(self.greetings).format(self.user_name)
+        welcome_msg = f"{greeting}, {self.user_name}! " + random.choice(self.greetings)
         self.speak(welcome_msg)
         self.speak("Say 'Hey JARVIS' to wake me up, or just start talking to me.")
 
     def speak(self, text, language='en'):
         """Enhanced TTS with better espeak integration"""
-        print(f"🔊 JARVIS: {text}")  # Always show text output
+        print(f"🔊 JARVIS: {text}")
         
         try:
             if language == 'hi':
@@ -112,14 +116,14 @@ class JarvisVoice:
             else:
                 result = subprocess.run([
                     'espeak', text, 
-                    '-s', '160',  # Speed
-                    '-p', '40',   # Pitch
-                    '-a', '100',  # Amplitude
-                    '-g', '5'     # Gap between words
+                    '-s', '155',  # Slightly slower for clarity
+                    '-p', '45',   # Better pitch
+                    '-a', '120',  # Higher amplitude
+                    '-g', '8',    # More gap between words
+                    '-v', 'en+m3' # Male voice variant
                 ], capture_output=True)
                 
                 if result.returncode != 0:
-                    # Fallback to termux-tts-speak
                     subprocess.run(['termux-tts-speak', text], check=False)
         except Exception as e:
             print(f"TTS Error: {e}")
@@ -191,10 +195,22 @@ class JarvisVoice:
             except:
                 self.speak("I couldn't open sound settings right now.")
 
+    def start_listening(self):
+        """Start the main listening loop"""
+        threading.Thread(target=self.listen_for_wake_word, daemon=True).start()
+        
+        # Keep main thread alive
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            self.speak("JARVIS shutting down. Goodbye!")
+            self.is_listening = False
+
     def listen_for_wake_word(self):
         """Continuous listening for wake word"""
         with self.microphone as source:
-            self.recognizer.adjust_for_ambient_noise(source)
+            self.recognizer.adjust_for_ambient_noise(source, duration=2)
         
         print("🎤 Listening for wake word 'Hey JARVIS'...")
         
@@ -252,24 +268,110 @@ class JarvisVoice:
         """Process voice commands and execute appropriate actions"""
         command = command.lower()
         
+        self.conversation_context.append(f"User: {command}")
+        
         # Check for specific command patterns
         for keyword, handler in self.responses.items():
             if keyword in command:
                 handler(command)
                 return
         
-        # Handle conversational queries
-        if any(word in command for word in ['how are you', 'how do you do']):
-            self.speak("I'm functioning perfectly, thank you for asking! How are you doing today?")
-        elif any(word in command for word in ['thank you', 'thanks']):
-            self.speak("You're very welcome! I'm always happy to help.")
-        elif any(word in command for word in ['who are you', 'what are you']):
-            self.speak("I'm JARVIS, your personal AI assistant. I'm here to help you with various tasks and answer your questions.")
-        elif any(word in command for word in ['help', 'what can you do']):
+        if any(word in command for word in ['how are you', 'how do you do', 'how are you doing']):
+            responses = [
+                "I'm functioning perfectly and feeling quite energetic today! How are you doing?",
+                "All systems are running smoothly, thank you for asking! What about you?",
+                "I'm doing wonderfully and ready for any challenge! How has your day been?",
+                "Excellent as always! I'm here and happy to help. How are you feeling today?"
+            ]
+            response = random.choice(responses)
+            self.speak(response)
+            self.conversation_context.append(f"JARVIS: {response}")
+        elif any(word in command for word in ['thank you', 'thanks', 'appreciate']):
+            responses = [
+                "You're absolutely welcome! It's my pleasure to help you.",
+                "Anytime! I genuinely enjoy assisting you with your tasks.",
+                "My pleasure entirely! That's what I'm here for.",
+                "You're very kind! I'm always happy to be of service."
+            ]
+            response = random.choice(responses)
+            self.speak(response)
+            self.conversation_context.append(f"JARVIS: {response}")
+        elif any(word in command for word in ['who are you', 'what are you', 'introduce yourself']):
+            response = "I'm JARVIS, your personal AI assistant created to make your life easier and more enjoyable. I can help with tasks, answer questions, and have friendly conversations with you!"
+            self.speak(response)
+            self.conversation_context.append(f"JARVIS: {response}")
+        elif any(word in command for word in ['help', 'what can you do', 'capabilities']):
             self.list_capabilities()
         else:
-            # Try to search or provide general response
             self.handle_general_query(command)
+
+    def get_gpt_response(self, query):
+        """Get intelligent response from GPT API"""
+        if not self.openai_api_key:
+            return None
+            
+        try:
+            # Prepare conversation context
+            context = "\n".join(self.conversation_context[-6:])  # Last 6 exchanges
+            
+            headers = {
+                'Authorization': f'Bearer {self.openai_api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            data = {
+                'model': 'gpt-3.5-turbo',
+                'messages': [
+                    {
+                        'role': 'system', 
+                        'content': 'You are JARVIS, a friendly and helpful AI assistant. Keep responses concise (1-2 sentences), conversational, and helpful. You are running on a mobile device in Termux.'
+                    },
+                    {
+                        'role': 'user', 
+                        'content': f"Context: {context}\n\nUser question: {query}"
+                    }
+                ],
+                'max_tokens': 150,
+                'temperature': 0.7
+            }
+            
+            response = requests.post(
+                'https://api.openai.com/v1/chat/completions',
+                headers=headers,
+                json=data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result['choices'][0]['message']['content'].strip()
+            else:
+                print(f"API Error: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            print(f"GPT API Error: {e}")
+            return None
+
+    def handle_general_query(self, command):
+        """Handle general queries with GPT API or fallback responses"""
+        gpt_response = self.get_gpt_response(command)
+        
+        if gpt_response:
+            self.speak(gpt_response)
+            self.conversation_context.append(f"JARVIS: {gpt_response}")
+        else:
+            # Friendly fallback responses
+            responses = [
+                "That's a fascinating question! While I'm still expanding my knowledge, I'd love to help you explore that topic further.",
+                "Interesting! I'm always learning new things. Could you tell me more about what you're curious about?",
+                "Great question! I may not have all the answers, but I'm here to help however I can. What specifically interests you about that?",
+                "I find that topic intriguing! While I'm still developing my expertise there, I'm happy to discuss it with you.",
+                "That's something I'd love to learn more about too! What aspects of that are you most curious about?"
+            ]
+            response = random.choice(responses)
+            self.speak(response)
+            self.conversation_context.append(f"JARVIS: {response}")
 
     def get_time(self, command):
         """Get current time"""
@@ -385,59 +487,14 @@ class JarvisVoice:
 
     def list_capabilities(self):
         """List JARVIS capabilities"""
-        capabilities = """I can help you with many things! I can tell you the time and date, 
-        check your battery status, open apps, make calls, send messages, play music, 
-        open camera, calculator, and settings. I can also tell jokes, give compliments, 
-        and have friendly conversations with you. Just ask me anything!"""
+        capabilities = """I'm quite versatile! I can tell you the time and date, check your battery, 
+        open apps, help with calls and messages, play music, open camera and calculator. 
+        I can also tell jokes, have friendly conversations, answer questions, and learn from our chats. 
+        Just talk to me naturally - I'm here to help make your day better!"""
         self.speak(capabilities)
-
-    def handle_general_query(self, command):
-        """Handle general queries"""
-        responses = [
-            "That's an interesting question. Let me think about that.",
-            "I'm still learning about that topic. Is there something specific I can help you with?",
-            "I'd love to help you with that. Could you be more specific?",
-            "That's a great question! I'm working on expanding my knowledge in that area."
-        ]
-        self.speak(random.choice(responses))
-
-# Flask API endpoints
-jarvis = JarvisVoice()
-
-@app.route('/speak', methods=['POST'])
-def speak_endpoint():
-    data = request.json
-    text = data.get('text', '')
-    language = data.get('language', 'en')
-    jarvis.speak(text, language)
-    return jsonify({'status': 'success'})
-
-@app.route('/listen', methods=['POST'])
-def listen_endpoint():
-    command = jarvis.listen_for_command()
-    if command:
-        jarvis.process_command(command)
-    return jsonify({'command': command})
-
-@app.route('/wake-word', methods=['POST'])
-def toggle_wake_word():
-    if not jarvis.is_listening:
-        jarvis.is_listening = True
-        threading.Thread(target=jarvis.listen_for_wake_word, daemon=True).start()
-        return jsonify({'status': 'listening'})
-    else:
-        jarvis.is_listening = False
-        return jsonify({'status': 'stopped'})
-
-@app.route('/health', methods=['GET'])
-def health_check():
-    return jsonify({
-        'status': 'online',
-        'tts_available': jarvis.tts_available,
-        'listening': jarvis.is_listening
-    })
+        self.conversation_context.append(f"JARVIS: {capabilities}")
 
 if __name__ == '__main__':
     print("🎤 J.A.R.V.I.S Voice System Starting...")
     print("🚀 JARVIS is now activated and ready!")
-    app.run(host='0.0.0.0', port=8001, debug=False)
+    jarvis = JarvisVoice()
