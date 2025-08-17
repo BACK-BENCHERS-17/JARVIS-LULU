@@ -34,10 +34,15 @@ termux-setup-storage
 # Create logs directory
 mkdir -p logs
 
+echo "🌐 Setting up Next.js web interface..."
+npm install --legacy-peer-deps
+
 echo "✅ Dependencies installed successfully!"
 echo ""
 echo "📋 Next steps:"
 echo "1. Grant Termux permissions in Android Settings:"
 echo "   - Storage, Microphone, Phone access"
 echo "2. Start JARVIS: bash start-jarvis.sh"
-echo "3. Access web interface: http://localhost:8000"
+echo "3. Access web interface: http://localhost:3000 (Next.js)"
+echo "4. Access API server: http://localhost:8000 (Express)"
+echo "5. Voice server: http://localhost:8001 (Flask)"
