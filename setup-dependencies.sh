@@ -21,7 +21,7 @@ npm install express cors
 
 # Install Node.js packages for JARVIS server
 echo "📦 Installing JARVIS server packages..."
-npm install --prefix . -f express@^4.18.2 cors@^2.8.5 ws@^8.14.2
+npm install --prefix . --package-lock-only=false $(cat server-package.json | jq -r '.dependencies | to_entries[] | "\(.key)@\(.value)"')
 
 # Fix Next.js dependency conflicts
 echo "🔧 Fixing Next.js dependencies..."
