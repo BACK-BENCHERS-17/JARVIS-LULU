@@ -1,9 +1,16 @@
 #!/bin/bash
 # J.A.R.V.I.S Phone Control Scripts
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+LOG_DIR="$PROJECT_DIR/logs"
+
+# Create logs directory if it doesn't exist
+mkdir -p "$LOG_DIR"
+
 # Function to log actions
 log_action() {
-    echo "$(date): $1" >> ~/jarvis/logs/actions.log
+    echo "$(date): $1" >> "$LOG_DIR/actions.log"
     echo "Done ✅"
 }
 

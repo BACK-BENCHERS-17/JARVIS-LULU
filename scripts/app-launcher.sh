@@ -1,6 +1,13 @@
 #!/bin/bash
 # J.A.R.V.I.S App Launcher
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+LOG_DIR="$PROJECT_DIR/logs"
+
+# Create logs directory if it doesn't exist
+mkdir -p "$LOG_DIR"
+
 launch_app() {
     app_name=$1
     
@@ -41,7 +48,7 @@ launch_app() {
             ;;
     esac
     
-    echo "$(date): Launched $app_name" >> ~/jarvis/logs/actions.log
+    echo "$(date): Launched $app_name" >> "$LOG_DIR/actions.log"
     echo "Done ✅ Launched $app_name"
 }
 

@@ -14,6 +14,9 @@ const PORT = 8000
 app.use(cors())
 app.use(express.json())
 
+const SCRIPT_DIR = __dirname
+const PROJECT_DIR = path.dirname(SCRIPT_DIR)
+
 // Utility function to execute shell commands
 const executeCommand = (command) => {
   return new Promise((resolve, reject) => {
@@ -32,7 +35,7 @@ app.post("/api/phone-control", async (req, res) => {
   const { action, value } = req.body
 
   try {
-    let command = `~/jarvis/scripts/phone-controls.sh ${action}`
+    let command = `bash "${SCRIPT_DIR}/phone-controls.sh" ${action}`
     if (value) command += ` ${value}`
 
     const result = await executeCommand(command)
@@ -47,7 +50,7 @@ app.post("/api/launch-app", async (req, res) => {
   const { appName } = req.body
 
   try {
-    const result = await executeCommand(`~/jarvis/scripts/app-launcher.sh "${appName}"`)
+    const result = await executeCommand(`bash "${SCRIPT_DIR}/app-launcher.sh" "${appName}"`)
     res.json({ success: true, result: result.stdout })
   } catch (error) {
     res.status(500).json({ success: false, error: error.error })
