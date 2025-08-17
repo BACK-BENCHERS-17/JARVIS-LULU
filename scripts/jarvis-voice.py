@@ -39,6 +39,14 @@ class JarvisVoice:
         self.wake_word = "jarvis"
         self.user_name = "Sir"
         
+        self.greetings = [
+            "I am JARVIS, your personal assistant. How can I assist you today?",
+            "JARVIS at your service. What would you like me to help you with?",
+            "I'm here and ready to help. What can I do for you?",
+            "Your personal AI assistant is online. How may I be of assistance?",
+            "JARVIS reporting for duty. What tasks can I handle for you today?"
+        ]
+        
         self.responses = {
             'time': self.get_time,
             'date': self.get_date,
