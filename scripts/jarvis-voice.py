@@ -3,7 +3,6 @@
 J.A.R.V.I.S Voice Recognition and TTS for Termux
 """
 import speech_recognition as sr
-import pyttsx3
 import subprocess
 import json
 import time
@@ -18,25 +17,43 @@ class JarvisVoice:
     def __init__(self):
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
-        self.tts_engine = pyttsx3.init()
+        self.tts_engine = None
+        self.tts_available = False
+        
+        # Try to initialize TTS engine
+        try:
+            import pyttsx3
+            self.tts_engine = pyttsx3.init()
+            self.tts_engine.setProperty('rate', 150)
+            self.tts_engine.setProperty('volume', 0.9)
+            self.tts_available = True
+            print("✅ TTS engine initialized successfully")
+        except Exception as e:
+            print(f"⚠️ TTS engine not available: {e}")
+            print("📱 Will use Termux TTS as fallback")
+        
         self.is_listening = False
         self.wake_word = "jarvis"
         
-        # Configure TTS
-        self.tts_engine.setProperty('rate', 150)
-        self.tts_engine.setProperty('volume', 0.9)
-        
     def speak(self, text, language='en'):
-        """Text to speech with language support"""
+        """Text to speech with language support and fallback options"""
         try:
             if language == 'hi':
                 # For Hindi, use system TTS if available
                 subprocess.run(['termux-tts-speak', text, '-l', 'hi-IN'], check=False)
-            else:
+            elif self.tts_available and self.tts_engine:
+                # Use pyttsx3 if available
                 self.tts_engine.say(text)
                 self.tts_engine.runAndWait()
+            else:
+                # Fallback to Termux TTS
+                result = subprocess.run(['termux-tts-speak', text], capture_output=True)
+                if result.returncode != 0:
+                    # Final fallback - just print
+                    print(f"🔊 JARVIS: {text}")
         except Exception as e:
             print(f"TTS Error: {e}")
+            print(f"🔊 JARVIS: {text}")  # Always show text as fallback
     
     def listen_for_wake_word(self):
         """Continuous listening for wake word"""

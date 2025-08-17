@@ -8,14 +8,15 @@ pkg update -y
 
 # Install core packages
 echo "Installing core packages..."
-pkg install -y python nodejs termux-api git curl wget jq
+pkg install -y python nodejs termux-api git curl wget jq espeak
 
 # Install Python packages
 echo "🐍 Installing Python packages..."
 pip install speechrecognition pyttsx3 requests flask flask-cors
 
-# Install Node.js packages
+# Install Node.js packages in project directory
 echo "📦 Installing Node.js packages..."
+npm init -y
 npm install express cors
 
 # Set up Termux permissions
