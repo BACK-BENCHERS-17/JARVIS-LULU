@@ -19,6 +19,14 @@ echo "📦 Installing Node.js packages..."
 npm init -y
 npm install express cors
 
+# Install Node.js packages for JARVIS server
+echo "📦 Installing JARVIS server packages..."
+npm install --prefix . -f express@^4.18.2 cors@^2.8.5 ws@^8.14.2
+
+# Fix Next.js dependency conflicts
+echo "🔧 Fixing Next.js dependencies..."
+npm install --legacy-peer-deps
+
 # Set up Termux permissions
 echo "🔐 Setting up Termux storage access..."
 termux-setup-storage
