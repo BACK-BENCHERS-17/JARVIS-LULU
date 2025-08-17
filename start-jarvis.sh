@@ -1,5 +1,5 @@
 #!/bin/bash
-# J.A.R.V.I.S Startup Script - Project Root Version
+# J.A.R.V.I.S Startup Script - Enhanced Version
 
 echo "🚀 Starting J.A.R.V.I.S Personal Assistant..."
 
@@ -10,22 +10,29 @@ if [ ! -d "scripts" ]; then
     exit 1
 fi
 
+if [ ! -d "node_modules" ]; then
+    echo "📦 Installing dependencies..."
+    npm install express cors
+fi
+
 # Make scripts executable
 chmod +x scripts/*.sh
+
+echo "🎤 Starting voice recognition..."
+python scripts/jarvis-voice.py &
+VOICE_PID=$!
+
+# Wait for voice server to initialize and announce activation
+sleep 2
 
 echo "🌐 Starting Next.js web interface..."
 npm run dev &
 NEXTJS_PID=$!
 
-# Start the voice recognition server
-echo "🎤 Starting voice recognition..."
-python scripts/jarvis-voice.py &
-VOICE_PID=$!
-
-# Wait a moment for voice server to start
+# Wait a moment for servers to start
 sleep 3
 
-# Start the main server
+# Start the API server
 echo "🌐 Starting API server..."
 node scripts/jarvis-server.js &
 SERVER_PID=$!
@@ -40,6 +47,7 @@ echo "🌐 Web Interface: http://localhost:3000"
 echo "📱 Voice server: http://localhost:8001"
 echo "🔧 API server: http://localhost:8000"
 echo "🎯 Open http://localhost:3000 for the full JARVIS experience"
+echo "🎤 Say 'Hey JARVIS' to interact with voice commands"
 echo ""
 echo "To stop J.A.R.V.I.S, run: bash stop-jarvis.sh"
 

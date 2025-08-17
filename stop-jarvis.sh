@@ -1,7 +1,14 @@
 #!/bin/bash
-# Stop J.A.R.V.I.S - Project Root Version
+# Stop J.A.R.V.I.S - Enhanced Version
 
 echo "🛑 Stopping J.A.R.V.I.S..."
+
+if [ -f voice.pid ] && kill -0 $(cat voice.pid) 2>/dev/null; then
+    curl -s -X POST http://localhost:8001/speak \
+         -H "Content-Type: application/json" \
+         -d '{"text":"JARVIS shutting down. Goodbye!"}' 2>/dev/null
+    sleep 2
+fi
 
 if [ -f nextjs.pid ]; then
     kill $(cat nextjs.pid) 2>/dev/null

@@ -24,7 +24,6 @@ class JarvisVoice:
         self.tts_engine = None
         self.tts_available = False
         
-        # Try to initialize TTS engine
         try:
             import pyttsx3
             self.tts_engine = pyttsx3.init()
@@ -34,20 +33,11 @@ class JarvisVoice:
             print("✅ TTS engine initialized successfully")
         except Exception as e:
             print(f"⚠️ TTS engine not available: {e}")
-            print("📱 Will use Termux TTS as fallback")
+            print("📱 Will use espeak directly")
         
         self.is_listening = False
         self.wake_word = "jarvis"
         self.user_name = "Sir"
-        
-        self.greetings = [
-            "Hello {}, I'm JARVIS, your personal assistant. How may I assist you today?",
-            "Good to see you again, {}. What can I help you with?",
-            "JARVIS at your service, {}. How can I make your day better?",
-            "Welcome back, {}. I'm ready to assist you with anything you need."
-        ]
-        
-        self.announce_activation()
         
         self.responses = {
             'time': self.get_time,
@@ -63,12 +53,23 @@ class JarvisVoice:
             'settings': self.open_settings,
             'joke': self.tell_joke,
             'compliment': self.give_compliment,
-            'goodbye': self.say_goodbye
+            'goodbye': self.say_goodbye,
+            'search': self.web_search,
+            'note': self.take_note,
+            'reminder': self.set_reminder,
+            'wifi': self.wifi_info,
+            'brightness': self.adjust_brightness,
+            'volume': self.adjust_volume
         }
         
-        # Start with greeting
+        # Start activation sequence
+        self.announce_activation()
         self.initial_greeting()
-    
+        
+        # Auto-start listening
+        self.is_listening = True
+        threading.Thread(target=self.listen_for_wake_word, daemon=True).start()
+
     def announce_activation(self):
         """Announce JARVIS activation"""
         self.speak("JARVIS is activated")
@@ -91,7 +92,9 @@ class JarvisVoice:
         self.speak("Say 'Hey JARVIS' to wake me up, or just start talking to me.")
 
     def speak(self, text, language='en'):
-        """Text to speech with language support and fallback options"""
+        """Enhanced TTS with better espeak integration"""
+        print(f"🔊 JARVIS: {text}")  # Always show text output
+        
         try:
             if language == 'hi':
                 subprocess.run(['termux-tts-speak', text, '-l', 'hi-IN'], check=False)
@@ -99,13 +102,87 @@ class JarvisVoice:
                 self.tts_engine.say(text)
                 self.tts_engine.runAndWait()
             else:
-                result = subprocess.run(['termux-tts-speak', text], capture_output=True)
+                result = subprocess.run([
+                    'espeak', text, 
+                    '-s', '160',  # Speed
+                    '-p', '40',   # Pitch
+                    '-a', '100',  # Amplitude
+                    '-g', '5'     # Gap between words
+                ], capture_output=True)
+                
                 if result.returncode != 0:
-                    print(f"🔊 JARVIS: {text}")
+                    # Fallback to termux-tts-speak
+                    subprocess.run(['termux-tts-speak', text], check=False)
         except Exception as e:
             print(f"TTS Error: {e}")
-            print(f"🔊 JARVIS: {text}")
-    
+
+    def web_search(self, command):
+        """Perform web search"""
+        query = command.replace('search', '').replace('for', '').strip()
+        if query:
+            self.speak(f"Searching for {query}")
+            try:
+                subprocess.run(['am', 'start', '-a', 'android.intent.action.WEB_SEARCH', '--es', 'query', query])
+            except:
+                self.speak("I couldn't perform the search right now.")
+        else:
+            self.speak("What would you like me to search for?")
+
+    def take_note(self, command):
+        """Take a note"""
+        note_content = command.replace('note', '').replace('take', '').strip()
+        if note_content:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                with open('jarvis_notes.txt', 'a') as f:
+                    f.write(f"[{timestamp}] {note_content}\n")
+                self.speak("Note saved successfully.")
+            except:
+                self.speak("I couldn't save the note right now.")
+        else:
+            self.speak("What would you like me to note down?")
+
+    def set_reminder(self, command):
+        """Set a reminder"""
+        self.speak("Reminder feature is being prepared. For now, I've noted your request.")
+        self.take_note(f"Reminder: {command}")
+
+    def wifi_info(self, command):
+        """Get WiFi information"""
+        try:
+            result = subprocess.run(['termux-wifi-connectioninfo'], capture_output=True, text=True)
+            if result.returncode == 0:
+                wifi_info = json.loads(result.stdout)
+                ssid = wifi_info.get('ssid', 'Unknown')
+                self.speak(f"You are connected to {ssid}")
+            else:
+                self.speak("I couldn't get WiFi information right now.")
+        except:
+            self.speak("WiFi information is not available.")
+
+    def adjust_brightness(self, command):
+        """Adjust screen brightness"""
+        self.speak("Opening display settings for brightness adjustment.")
+        try:
+            subprocess.run(['am', 'start', '-a', 'android.settings.DISPLAY_SETTINGS'])
+        except:
+            self.speak("I couldn't open display settings right now.")
+
+    def adjust_volume(self, command):
+        """Adjust volume"""
+        if 'up' in command:
+            subprocess.run(['input', 'keyevent', 'KEYCODE_VOLUME_UP'])
+            self.speak("Volume increased.")
+        elif 'down' in command:
+            subprocess.run(['input', 'keyevent', 'KEYCODE_VOLUME_DOWN'])
+            self.speak("Volume decreased.")
+        else:
+            self.speak("Opening sound settings.")
+            try:
+                subprocess.run(['am', 'start', '-a', 'android.settings.SOUND_SETTINGS'])
+            except:
+                self.speak("I couldn't open sound settings right now.")
+
     def listen_for_wake_word(self):
         """Continuous listening for wake word"""
         with self.microphone as source:
