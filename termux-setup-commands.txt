@@ -1,0 +1,434 @@
+# Step 1: Create directory structure
+mkdir -p ~/jarvis/scripts
+cd ~/jarvis
+
+# Step 2: Install required packages
+pkg update && pkg upgrade -y
+pkg install -y python nodejs termux-api git curl wget
+pip install speech_recognition pyttsx3 requests flask
+
+# Step 3: Create the setup script
+cat > scripts/setup-termux.sh << 'EOF'
+#!/bin/bash
+echo "🔧 Setting up J.A.R.V.I.S environment..."
+
+# Install packages
+pkg update && pkg upgrade -y
+pkg install -y python nodejs termux-api git curl wget openssh
+
+# Install Python packages
+pip install speech_recognition pyttsx3 requests flask pyaudio
+
+# Install Node.js packages
+npm install -g express cors body-parser
+
+# Set permissions
+chmod +x ~/jarvis/scripts/*.sh
+
+echo "✅ Setup complete! Run 'bash ~/jarvis/scripts/start-jarvis.sh' to start J.A.R.V.I.S"
+EOF
+
+# Step 4: Create the voice recognition script
+cat > scripts/jarvis-voice.py << 'EOF'
+#!/usr/bin/env python3
+import speech_recognition as sr
+import pyttsx3
+import requests
+import json
+import threading
+import time
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+# Initialize speech recognition and TTS
+recognizer = sr.Recognizer()
+tts_engine = pyttsx3.init()
+
+# Configure TTS
+voices = tts_engine.getProperty('voices')
+tts_engine.setProperty('rate', 150)
+tts_engine.setProperty('volume', 0.9)
+
+class JarvisVoice:
+    def __init__(self):
+        self.listening = False
+        self.wake_word_active = True
+        
+    def speak(self, text, language='en'):
+        """Convert text to speech"""
+        try:
+            if language == 'hi':
+                # For Hindi, you might need additional setup
+                tts_engine.setProperty('voice', voices[0].id if voices else None)
+            tts_engine.say(text)
+            tts_engine.runAndWait()
+        except Exception as e:
+            print(f"TTS Error: {e}")
+    
+    def listen_for_wake_word(self):
+        """Continuously listen for 'Jarvis' wake word"""
+        with sr.Microphone() as source:
+            recognizer.adjust_for_ambient_noise(source)
+            
+        while self.wake_word_active:
+            try:
+                with sr.Microphone() as source:
+                    print("🎧 Listening for 'Jarvis'...")
+                    audio = recognizer.listen(source, timeout=1, phrase_time_limit=3)
+                    
+                text = recognizer.recognize_google(audio).lower()
+                if 'jarvis' in text:
+                    self.speak("Yes sir, I'm listening")
+                    self.process_command()
+                    
+            except sr.WaitTimeoutError:
+                pass
+            except sr.UnknownValueError:
+                pass
+            except Exception as e:
+                print(f"Wake word error: {e}")
+                time.sleep(1)
+    
+    def process_command(self):
+        """Process voice command after wake word"""
+        try:
+            with sr.Microphone() as source:
+                print("🎤 Listening for command...")
+                audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
+                
+            command = recognizer.recognize_google(audio)
+            print(f"Command: {command}")
+            
+            # Send command to main server
+            response = requests.post('http://localhost:8000/api/voice-command', 
+                                   json={'command': command})
+            
+            if response.status_code == 200:
+                result = response.json()
+                self.speak(result.get('response', 'Command executed'))
+            else:
+                self.speak("Sorry, I couldn't process that command")
+                
+        except sr.UnknownValueError:
+            self.speak("Sorry, I didn't understand that")
+        except sr.RequestError as e:
+            self.speak("Speech recognition error")
+        except Exception as e:
+            print(f"Command processing error: {e}")
+
+# Flask routes for web interface
+@app.route('/speak', methods=['POST'])
+def speak_endpoint():
+    data = request.json
+    text = data.get('text', '')
+    language = data.get('language', 'en')
+    
+    jarvis.speak(text, language)
+    return jsonify({'status': 'success'})
+
+@app.route('/start-listening', methods=['POST'])
+def start_listening():
+    jarvis.wake_word_active = True
+    threading.Thread(target=jarvis.listen_for_wake_word, daemon=True).start()
+    return jsonify({'status': 'listening started'})
+
+@app.route('/stop-listening', methods=['POST'])
+def stop_listening():
+    jarvis.wake_word_active = False
+    return jsonify({'status': 'listening stopped'})
+
+if __name__ == '__main__':
+    jarvis = JarvisVoice()
+    
+    # Start wake word detection in background
+    threading.Thread(target=jarvis.listen_for_wake_word, daemon=True).start()
+    
+    # Start Flask server
+    app.run(host='0.0.0.0', port=8001, debug=False)
+EOF
+
+# Step 5: Create phone controls script
+cat > scripts/phone-controls.sh << 'EOF'
+#!/bin/bash
+
+# Phone control functions using Termux-API
+
+toggle_wifi() {
+    current=$(termux-wifi-connectioninfo | grep -o '"ssid":"[^"]*"' | wc -l)
+    if [ $current -gt 0 ]; then
+        termux-wifi-enable false
+        echo "📶 Wi-Fi disabled"
+    else
+        termux-wifi-enable true
+        echo "📶 Wi-Fi enabled"
+    fi
+}
+
+toggle_torch() {
+    # Toggle flashlight
+    termux-torch toggle
+    echo "🔦 Torch toggled"
+}
+
+set_volume() {
+    level=$1
+    termux-volume music $level
+    echo "🔊 Volume set to $level"
+}
+
+set_brightness() {
+    level=$1
+    termux-brightness $level
+    echo "💡 Brightness set to $level"
+}
+
+get_battery() {
+    termux-battery-status
+}
+
+vibrate_phone() {
+    duration=${1:-500}
+    termux-vibrate -d $duration
+    echo "📳 Phone vibrated"
+}
+
+screen_on() {
+    termux-wake-lock
+    echo "📱 Screen kept on"
+}
+
+screen_off() {
+    termux-wake-unlock
+    echo "📱 Screen lock released"
+}
+
+# Handle command line arguments
+case "$1" in
+    "wifi") toggle_wifi ;;
+    "torch") toggle_torch ;;
+    "volume") set_volume $2 ;;
+    "brightness") set_brightness $2 ;;
+    "battery") get_battery ;;
+    "vibrate") vibrate_phone $2 ;;
+    "screen-on") screen_on ;;
+    "screen-off") screen_off ;;
+    *) echo "Usage: $0 {wifi|torch|volume|brightness|battery|vibrate|screen-on|screen-off}" ;;
+esac
+EOF
+
+# Step 6: Create app launcher script
+cat > scripts/app-launcher.sh << 'EOF'
+#!/bin/bash
+
+# App launcher using Android intents
+
+launch_app() {
+    app_name=$1
+    
+    case "$app_name" in
+        "whatsapp"|"WhatsApp")
+            am start -n com.whatsapp/.HomeActivity
+            echo "📱 WhatsApp launched"
+            ;;
+        "telegram"|"Telegram")
+            am start -n org.telegram.messenger/.DefaultIcon
+            echo "📱 Telegram launched"
+            ;;
+        "chrome"|"Chrome")
+            am start -n com.android.chrome/.Main
+            echo "🌐 Chrome launched"
+            ;;
+        "camera"|"Camera")
+            am start -a android.media.action.IMAGE_CAPTURE
+            echo "📷 Camera launched"
+            ;;
+        "gallery"|"Gallery")
+            am start -a android.intent.action.VIEW -t image/*
+            echo "🖼️ Gallery launched"
+            ;;
+        "settings"|"Settings")
+            am start -a android.settings.SETTINGS
+            echo "⚙️ Settings launched"
+            ;;
+        "calculator"|"Calculator")
+            am start -n com.android.calculator2/.Calculator
+            echo "🔢 Calculator launched"
+            ;;
+        "music"|"Music")
+            am start -a android.intent.action.MUSIC_PLAYER
+            echo "🎵 Music player launched"
+            ;;
+        *)
+            echo "❌ App '$app_name' not recognized"
+            echo "Available apps: whatsapp, telegram, chrome, camera, gallery, settings, calculator, music"
+            ;;
+    esac
+}
+
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <app_name>"
+    echo "Available apps: whatsapp, telegram, chrome, camera, gallery, settings, calculator, music"
+else
+    launch_app "$1"
+fi
+EOF
+
+# Step 7: Create main server script
+cat > scripts/jarvis-server.js << 'EOF'
+const express = require('express');
+const cors = require('cors');
+const { exec } = require('child_process');
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+// Voice command processing
+app.post('/api/voice-command', (req, res) => {
+    const { command } = req.body;
+    const lowerCommand = command.toLowerCase();
+    
+    console.log(`[JARVIS] Processing command: ${command}`);
+    
+    // Phone controls
+    if (lowerCommand.includes('wifi')) {
+        exec('bash ~/jarvis/scripts/phone-controls.sh wifi', (error, stdout) => {
+            res.json({ response: stdout || 'Wi-Fi toggled. Done ✅' });
+        });
+    }
+    else if (lowerCommand.includes('torch') || lowerCommand.includes('flashlight')) {
+        exec('bash ~/jarvis/scripts/phone-controls.sh torch', (error, stdout) => {
+            res.json({ response: stdout || 'Torch toggled. Done ✅' });
+        });
+    }
+    else if (lowerCommand.includes('volume')) {
+        const volumeMatch = lowerCommand.match(/volume (\d+)/);
+        const level = volumeMatch ? volumeMatch[1] : '50';
+        exec(`bash ~/jarvis/scripts/phone-controls.sh volume ${level}`, (error, stdout) => {
+            res.json({ response: stdout || `Volume set to ${level}. Done ✅` });
+        });
+    }
+    else if (lowerCommand.includes('brightness')) {
+        const brightnessMatch = lowerCommand.match(/brightness (\d+)/);
+        const level = brightnessMatch ? brightnessMatch[1] : '128';
+        exec(`bash ~/jarvis/scripts/phone-controls.sh brightness ${level}`, (error, stdout) => {
+            res.json({ response: stdout || `Brightness set. Done ✅` });
+        });
+    }
+    else if (lowerCommand.includes('battery')) {
+        exec('bash ~/jarvis/scripts/phone-controls.sh battery', (error, stdout) => {
+            res.json({ response: stdout || 'Battery status retrieved. Done ✅' });
+        });
+    }
+    else if (lowerCommand.includes('vibrate')) {
+        exec('bash ~/jarvis/scripts/phone-controls.sh vibrate', (error, stdout) => {
+            res.json({ response: stdout || 'Phone vibrated. Done ✅' });
+        });
+    }
+    // App launching
+    else if (lowerCommand.includes('open') || lowerCommand.includes('launch')) {
+        const apps = ['whatsapp', 'telegram', 'chrome', 'camera', 'gallery', 'settings', 'calculator', 'music'];
+        const foundApp = apps.find(app => lowerCommand.includes(app));
+        
+        if (foundApp) {
+            exec(`bash ~/jarvis/scripts/app-launcher.sh ${foundApp}`, (error, stdout) => {
+                res.json({ response: stdout || `${foundApp} launched. Done ✅` });
+            });
+        } else {
+            res.json({ response: 'App not recognized. Available apps: WhatsApp, Telegram, Chrome, Camera, Gallery, Settings, Calculator, Music' });
+        }
+    }
+    // Default response
+    else {
+        res.json({ response: 'Command processed. Done ✅' });
+    }
+});
+
+// Health check
+app.get('/health', (req, res) => {
+    res.json({ status: 'J.A.R.V.I.S is running', timestamp: new Date().toISOString() });
+});
+
+const PORT = 8000;
+app.listen(PORT, () => {
+    console.log(`🤖 J.A.R.V.I.S Main Server running on http://localhost:${PORT}`);
+});
+EOF
+
+# Step 8: Create start script
+cat > scripts/start-jarvis.sh << 'EOF'
+#!/bin/bash
+
+echo "🚀 Starting J.A.R.V.I.S Personal Assistant..."
+
+# Make scripts executable
+chmod +x ~/jarvis/scripts/*.sh
+
+# Start voice recognition server in background
+echo "🎤 Starting voice recognition..."
+cd ~/jarvis && python scripts/jarvis-voice.py &
+VOICE_PID=$!
+
+# Wait a moment for voice server to start
+sleep 2
+
+# Start main server
+echo "🌐 Starting main server..."
+cd ~/jarvis && node scripts/jarvis-server.js &
+SERVER_PID=$!
+
+# Save PIDs for stopping later
+echo $VOICE_PID > ~/jarvis/.voice_pid
+echo $SERVER_PID > ~/jarvis/.server_pid
+
+echo "✅ J.A.R.V.I.S is now running!"
+echo "📱 Voice server: http://localhost:8001"
+echo "🌐 Main server: http://localhost:8000"
+echo "🎯 Open your web interface and connect to localhost:8000"
+echo ""
+echo "To stop J.A.R.V.I.S, run: ~/jarvis/scripts/stop-jarvis.sh"
+
+# Keep script running
+wait
+EOF
+
+# Step 9: Create stop script
+cat > scripts/stop-jarvis.sh << 'EOF'
+#!/bin/bash
+
+echo "🛑 Stopping J.A.R.V.I.S..."
+
+# Kill voice server
+if [ -f ~/jarvis/.voice_pid ]; then
+    VOICE_PID=$(cat ~/jarvis/.voice_pid)
+    kill $VOICE_PID 2>/dev/null
+    rm ~/jarvis/.voice_pid
+    echo "🎤 Voice server stopped"
+fi
+
+# Kill main server
+if [ -f ~/jarvis/.server_pid ]; then
+    SERVER_PID=$(cat ~/jarvis/.server_pid)
+    kill $SERVER_PID 2>/dev/null
+    rm ~/jarvis/.server_pid
+    echo "🌐 Main server stopped"
+fi
+
+# Kill any remaining processes
+pkill -f "jarvis-voice.py"
+pkill -f "jarvis-server.js"
+
+echo "✅ J.A.R.V.I.S stopped successfully"
+EOF
+
+# Step 10: Make all scripts executable
+chmod +x scripts/*.sh
+
+echo "📁 All files created successfully!"
+echo ""
+echo "Next steps:"
+echo "1. Run: bash scripts/setup-termux.sh"
+echo "2. Grant Termux permissions in Android settings"
+echo "3. Run: bash scripts/start-jarvis.sh"
+echo "4. Open your web interface and connect to localhost:8000"
